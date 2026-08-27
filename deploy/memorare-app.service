@@ -1,0 +1,21 @@
+# systemd unit so the app survives reboots and SSH disconnects.
+# Install to /etc/systemd/system/memorare-app.service
+#   systemctl daemon-reload && systemctl enable --now memorare-app
+
+[Unit]
+Description=Memorare candidate Next.js app
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/memorare-app
+EnvironmentFile=/opt/memorare-app/.env.local
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=HOSTNAME=127.0.0.1
+
+[Install]
+WantedBy=multi-user.target
