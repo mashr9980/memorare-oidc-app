@@ -85,8 +85,26 @@ which is required: without it Next.js builds `http://` absolute URLs and the
 ## Tests
 
 ```bash
-npm test          # PKCE and session unit tests
+npm test          # PKCE and session unit tests (includes the RFC 7636 test vector)
 ```
+
+## Local end-to-end testing without credentials
+
+`mock/idp.js` is a strict local mock of the Memorare IdP implementing
+`/api/authorize`, `/api/token`, `/api/userinfo`, `/api/profile`, and `/logout`
+per the published docs. It enforces PKCE (S256 verifier check), one-time codes,
+client authentication, and the `idp=google` / `login_hint` exclusivity rule, so
+integration mistakes fail here instead of on the real server.
+
+```bash
+node mock/idp.js                      # listens on 127.0.0.1:9000
+# in .env.local: AUTH_BASE=http://127.0.0.1:9000
+npm run build && npm start
+```
+
+Both login paths, name persistence, code replay, and wrong-verifier rejection
+were verified end-to-end against this mock. Point `AUTH_BASE` back at
+`https://auth.memorare.ai` for the real deployment.
 
 ## Verifying no secrets are exposed
 
