@@ -63,6 +63,9 @@ export async function getProfile(accessToken: string): Promise<Profile> {
     headers: { Authorization: `Bearer ${accessToken}` },
     cache: "no-store",
   });
+  if (res.status === 401) {
+    throw new Error("token_expired");
+  }
   if (!res.ok) {
     console.error("[memorare] profile GET failed", res.status, await res.text());
     throw new Error("profile_fetch_failed");
@@ -82,6 +85,9 @@ export async function patchProfile(accessToken: string, name: string): Promise<P
     body: JSON.stringify({ name }),
     cache: "no-store",
   });
+  if (res.status === 401) {
+    throw new Error("token_expired");
+  }
   if (!res.ok) {
     console.error("[memorare] profile PATCH failed", res.status, await res.text());
     throw new Error("profile_update_failed");

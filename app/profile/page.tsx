@@ -8,7 +8,15 @@ export const dynamic = "force-dynamic";
 export default async function ProfilePage() {
   const session = await getSession();
   if (!session) redirect("/");
-  const profile = await getProfile(session.accessToken).catch(() => null);
+
+  let profile: Awaited<ReturnType<typeof getProfile>> | null = null;
+  try {
+    profile = await getProfile(session.accessToken);
+  } catch (err) {
+    if (err instanceof Error && err.message === "token_expired") {
+      redirect("/?error=session_expired");
+    }
+  }
 
   const email = profile?.email ?? session.email;
   const name = profile?.name ?? session.name ?? "";

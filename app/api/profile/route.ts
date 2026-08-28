@@ -26,6 +26,9 @@ export async function PATCH(req: NextRequest) {
     await patchProfile(session.accessToken, name);
     return NextResponse.json({ name });
   } catch (err) {
+    if (err instanceof Error && err.message === "token_expired") {
+      return NextResponse.json({ error: "token_expired" }, { status: 401 });
+    }
     console.error("[api/profile] update failed", err);
     return NextResponse.json({ error: "update_failed" }, { status: 502 });
   }
