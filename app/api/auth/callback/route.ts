@@ -21,7 +21,12 @@ export async function GET(req: NextRequest) {
   const upstreamError = params.get("error");
   if (upstreamError) {
     console.error("[auth/callback] provider returned error", upstreamError);
-    return fail(req, "auth_failed");
+    if (upstreamError === "login_required") {
+    console.error("[auth/callback] login required - show login UI");
+    return fail(req, "login_required");
+  }
+  console.error("[auth/callback] provider returned error", upstreamError);
+  return fail(req, "auth_failed");
   }
 
   const code = params.get("code");
