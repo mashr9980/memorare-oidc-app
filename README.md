@@ -4,6 +4,8 @@ Next.js app that signs users in through the Memorare Identity Provider (OAuth 2.
 
 **Live demo: https://test.vault-mind.com**
 
+[![CI](https://github.com/mashr9980/memorare-oidc-app/actions/workflows/ci.yml/badge.svg)](https://github.com/mashr9980/memorare-oidc-app/actions/workflows/ci.yml)
+
 | Sign in | Profile |
 |---|---|
 | ![Login](docs/live-login.png) | ![Profile](docs/live-profile.png) |
