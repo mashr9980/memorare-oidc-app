@@ -131,6 +131,27 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+
+  if (req.method === "POST" && u.pathname === "/api/profile/avatar") {
+    const user = bearer(req);
+    if (!user) return deny(res, 401, "invalid_token");
+    let buf = Buffer.alloc(0);
+    req.on("data", (c) => { buf = Buffer.concat([buf, c]); });
+    req.on("end", () => {
+      try {
+        const bd = new TextDecoder().decode(buf);
+        if (!bd.includes("avatar")) return deny(res, 400, "avatar_required");
+        user.picture = `https://example.com/avatar-${user.sub}.png`;
+        console.log(`[mock-idp] avatar upload ok -> picture="${user.picture}"`);
+        res.writeHead(201, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, profile: user }));
+      } catch {
+        return deny(res, 400, "invalid_multipart");
+      }
+    });
+    return;
+  }
+
   if (req.method === "GET" && u.pathname === "/logout") {
     const to = q.get("return_to") || q.get("post_logout_redirect_uri") || q.get("redirect_uri") || "/";
     res.writeHead(302, { Location: to });
