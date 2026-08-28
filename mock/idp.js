@@ -1,15 +1,22 @@
 const http = require("http");
-const { createHash, randomBytes } = require("crypto");
+const { createHash, randomBytes, createHmac } = require("crypto");
 
 const CLIENT_ID = process.env.MOCK_CLIENT_ID || "local-dev-client-id";
 const CLIENT_SECRET = process.env.MOCK_CLIENT_SECRET || "local-dev-client-secret-PLACEHOLDER";
 const PORT = 9000;
 
-const codes = new Map();  // code  -> { challenge, user, used }
+const codes = new Map();  // code  -> { challenge, user, nonce, used }
 const tokens = new Map(); // token -> mutable profile
 
 const b64url = (buf) => buf.toString("base64url");
 const sha256 = (s) => b64url(createHash("sha256").update(s, "ascii").digest());
+
+function signHS256(payload, secret) {
+  const header = b64url(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const body = b64url(Buffer.from(JSON.stringify(payload)));
+  const sig = b64url(createHmac("sha256", secret).update(`${header}.${body}`).digest());
+  return `${header}.${body}.${sig}`;
+}
 
 function deny(res, status, error, detail) {
   console.log(`[mock-idp] DENY ${status} ${error} ${detail ?? ""}`);
@@ -42,7 +49,12 @@ const server = http.createServer((req, res) => {
         : { sub: "e-100", email: q.get("login_hint") || "unknown@example.com", name: null, picture: null };
 
     const code = b64url(randomBytes(16));
-    codes.set(code, { challenge: q.get("code_challenge"), user, used: false });
+    codes.set(code, {
+      challenge: q.get("code_challenge"),
+      user,
+      nonce: q.get("nonce"),
+      used: false,
+    });
 
     const back = new URL(q.get("redirect_uri"));
     back.searchParams.set("code", code);
@@ -68,10 +80,21 @@ const server = http.createServer((req, res) => {
 
       rec.used = true;
       const token = b64url(randomBytes(24));
+      const now = Math.floor(Date.now() / 1000);
+      const idTokenPayload = {
+        iss: "https://auth.memorare.ai",
+        aud: p.get("client_id"),
+        sub: rec.user.sub,
+        exp: now + 3600,
+        iat: now,
+      };
+      if (rec.nonce) idTokenPayload.nonce = rec.nonce;
+      const idToken = signHS256(idTokenPayload, CLIENT_SECRET);
+
       tokens.set(token, { ...rec.user, updated_at: "2026-08-28 00:00:00" });
       console.log("[mock-idp] token exchange ok (PKCE verified)");
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ access_token: token, token_type: "Bearer", expires_in: 3600, scope: "openid profile email" }));
+      res.end(JSON.stringify({ access_token: token, token_type: "Bearer", expires_in: 3600, id_token: idToken, scope: "openid profile email" }));
     });
     return;
   }

@@ -4,6 +4,7 @@ import { sealSession } from "@/lib/session";
 import { COOKIE, isSecureRequest } from "@/lib/cookies";
 import { safeEqual } from "@/lib/pkce";
 import { publicOrigin } from "@/lib/origin";
+import { verifyIDToken } from "@/lib/id-token";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +37,16 @@ export async function GET(req: NextRequest) {
 
   try {
     const tokens = await exchangeCode(code, verifier);
+
+    if (tokens.id_token) {
+      const idToken = await verifyIDToken(tokens.id_token);
+      const cookieNonce = req.cookies.get(COOKIE.nonce)?.value;
+      if (cookieNonce && idToken.nonce !== cookieNonce) {
+        console.error("[auth/callback] nonce mismatch");
+        return fail(req, "nonce_mismatch");
+      }
+    }
+
     const user = await fetchUserinfo(tokens.access_token);
 
     const sealed = await sealSession(
@@ -59,6 +70,7 @@ export async function GET(req: NextRequest) {
     });
     res.cookies.delete(COOKIE.verifier);
     res.cookies.delete(COOKIE.state);
+    res.cookies.delete(COOKIE.nonce);
     return res;
   } catch (err) {
     console.error("[auth/callback] exchange failed", err);

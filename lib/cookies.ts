@@ -1,6 +1,7 @@
 export const COOKIE = {
   verifier: "mem_cv",
   state: "mem_state",
+  nonce: "mem_nonce",
   session: "mem_session",
 } as const;
 

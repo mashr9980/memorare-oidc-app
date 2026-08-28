@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { serverConfig } from "@/lib/config";
-import { challengeFor, createState, createVerifier } from "@/lib/pkce";
+import { challengeFor, createState, createVerifier, generateNonce } from "@/lib/pkce";
 import { COOKIE, isSecureRequest } from "@/lib/cookies";
 import { publicOrigin } from "@/lib/origin";
 
@@ -23,12 +23,14 @@ export async function GET(req: NextRequest) {
 
   const verifier = createVerifier();
   const state = createState();
+  const nonce = generateNonce();
   const authorize = new URL(`${cfg.authBase.replace(/\/$/, "")}/api/authorize`);
   authorize.searchParams.set("response_type", "code");
   authorize.searchParams.set("client_id", cfg.clientId);
   authorize.searchParams.set("redirect_uri", cfg.redirectUri);
   authorize.searchParams.set("scope", "openid profile email");
   authorize.searchParams.set("state", state);
+  authorize.searchParams.set("nonce", nonce);
   authorize.searchParams.set("code_challenge", challengeFor(verifier));
   authorize.searchParams.set("code_challenge_method", "S256");
   if (useGoogle) authorize.searchParams.set("idp", "google");
@@ -44,5 +46,6 @@ export async function GET(req: NextRequest) {
   };
   res.cookies.set(COOKIE.verifier, verifier, opts);
   res.cookies.set(COOKIE.state, state, opts);
+  res.cookies.set(COOKIE.nonce, nonce, opts);
   return res;
 }

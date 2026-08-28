@@ -19,3 +19,7 @@ export function safeEqual(a: string, b: string): boolean {
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
 }
+export function generateNonce(): string {
+  const bytes = Buffer.from(randomBytes(16)).toString("base64url");
+  return bytes.replace(/[=]+$/, "");
+}
