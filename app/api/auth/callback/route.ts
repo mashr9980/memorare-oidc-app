@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exchangeCode, fetchUserinfo } from "@/lib/memorare";
 import { sealSession } from "@/lib/session";
-import { COOKIE, isSecureRequest } from "@/lib/cookies";
+import { COOKIE, isSecureRequest, sessionCookieName } from "@/lib/cookies";
 import { safeEqual } from "@/lib/pkce";
 import { publicOrigin } from "@/lib/origin";
 import { verifyIDToken } from "@/lib/id-token";
@@ -42,16 +42,22 @@ export async function GET(req: NextRequest) {
   try {
     const tokens = await exchangeCode(code, verifier);
 
+    let claims = null;
     if (tokens.id_token) {
-      const idToken = await verifyIDToken(tokens.id_token);
+      claims = await verifyIDToken(tokens.id_token);
       const cookieNonce = req.cookies.get(COOKIE.nonce)?.value;
-      if (cookieNonce && idToken.nonce !== cookieNonce) {
+      if (cookieNonce && claims.nonce && claims.nonce !== cookieNonce) {
         console.error("[auth/callback] nonce mismatch");
         return fail(req, "nonce_mismatch");
       }
     }
 
     const user = await fetchUserinfo(tokens.access_token);
+
+    if (claims && String(user.sub ?? "") !== claims.sub) {
+      console.error("[auth/callback] userinfo sub does not match id_token sub");
+      return fail(req, "subject_mismatch");
+    }
 
     const sealed = await sealSession(
       {
@@ -64,11 +70,11 @@ export async function GET(req: NextRequest) {
       tokens.expires_in ?? 3600
     );
 
+    const secure = isSecureRequest(req);
     const res = NextResponse.redirect(`${publicOrigin(req)}/profile`);
-    const cookieName = process.env.NODE_ENV === "production" ? "__Host-mem_session" : COOKIE.session;
-    res.cookies.set(cookieName, sealed, {
+    res.cookies.set(sessionCookieName(secure), sealed, {
       httpOnly: true,
-      secure: isSecureRequest(req),
+      secure,
       sameSite: "lax",
       path: "/",
       maxAge: tokens.expires_in ?? 3600,

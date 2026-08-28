@@ -2,7 +2,7 @@ import "server-only";
 import { EncryptJWT, jwtDecrypt } from "jose";
 import { createHash } from "crypto";
 import { cookies } from "next/headers";
-import { COOKIE } from "./cookies";
+import { COOKIE, HOST_SESSION } from "./cookies";
 
 export type Session = {
   sub: string;
@@ -43,6 +43,6 @@ export async function unsealSession(token: string): Promise<Session | null> {
 /** Read the current session from the request cookies. Server-side only. */
 export async function getSession(): Promise<Session | null> {
   const jar = await cookies();
-  const raw = jar.get(COOKIE.session)?.value;
+  const raw = jar.get(HOST_SESSION)?.value ?? jar.get(COOKIE.session)?.value;
   return raw ? unsealSession(raw) : null;
 }

@@ -20,9 +20,5 @@ export async function verifyIDToken(idToken: string): Promise<IDToken> {
     audience: cfg.clientId,
   });
 
-  if (payload.token_type && payload.token_type !== "Bearer") {
-    throw new Error("invalid_token_type");
-  }
-
   return payload as unknown as IDToken;
 }

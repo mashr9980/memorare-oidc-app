@@ -20,8 +20,10 @@ function signHS256(payload, secret) {
 
 function deny(res, status, error, detail) {
   console.log(`[mock-idp] DENY ${status} ${error} ${detail ?? ""}`);
-  res.writeHead(status, { "Content-Type": "application/json" });
-  res.end(JSON.stringify({ error, detail }));
+  const headers = { "Content-Type": "application/json" };
+  if (status === 401) headers["WWW-Authenticate"] = "Bearer";
+  res.writeHead(status, headers);
+  res.end(JSON.stringify({ error, error_description: detail ?? "" }));
 }
 
 function bearer(req) {
