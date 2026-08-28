@@ -146,10 +146,20 @@ if (req.method === "GET" && u.pathname === "/api/userinfo") {
     req.on("end", () => {
       let parsed;
       try { parsed = JSON.parse(body); } catch { return deny(res, 400, "invalid_json"); }
-      if ("email" in parsed) return deny(res, 400, "email_not_editable");
-      if (typeof parsed.name !== "string" || !parsed.name.trim()) return deny(res, 400, "name_required");
-      user.name = parsed.name.trim();
-      console.log(`[mock-idp] profile PATCH ok -> name="${user.name}"`);
+      if ("email" in parsed) return deny(res, 400, "invalid_request", "Email cannot be changed.");
+      const picture = "picture" in parsed ? parsed.picture : parsed.avatar_url;
+      const touches = "name" in parsed || picture !== undefined;
+      if (!touches) return deny(res, 400, "invalid_request", "Nothing to update.");
+      if ("name" in parsed) {
+        if (parsed.name !== null && typeof parsed.name !== "string") return deny(res, 400, "invalid_request", "name must be a string or null");
+        user.name = parsed.name === null || parsed.name.trim() === "" ? null : parsed.name.trim();
+      }
+      if (picture !== undefined) {
+        if (picture !== null && !/^(https:\/\/|http:\/\/(localhost|127\.0\.0\.1)[:/])/.test(String(picture)))
+          return deny(res, 400, "invalid_request", "picture must be an https URL");
+        user.picture = picture;
+      }
+      console.log(`[mock-idp] profile PATCH ok -> name=${JSON.stringify(user.name)} picture=${JSON.stringify(user.picture)}`);
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, profile: user }));
     });

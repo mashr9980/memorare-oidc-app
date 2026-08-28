@@ -1,246 +1,164 @@
-# Memorare OIDC Candidate Test
+# Memorare Auth + Profile Integration
 
-A Next.js OAuth 2.0 + OIDC implementation demonstrating secure server-side auth flow, encrypted session management, and spec compliance. Built for the ibl.ai / Memorare hiring take-home.
+Next.js app that signs users in through the Memorare Identity Provider (OAuth 2.0 authorization code + PKCE S256), shows their profile, and lets them change their name and photo.
 
-## Live Demo
+**Live demo: https://test.vault-mind.com**
 
-**https://test.vault-mind.com**
-
-| Login | Profile (after sign-in) |
+| Sign in | Profile |
 |---|---|
 | ![Login](docs/live-login.png) | ![Profile](docs/live-profile.png) |
 
-## Deliverables (Memorare Spec §7)
+Every token exchange, every provider call, and every secret stays on the server. The browser only ever receives an encrypted session cookie it cannot read.
 
-| Criterion | Status | File |
-|-----------|--------|------|
-| Next.js 15+ with React 19 | ✅ | `package.json`, `app/` |
-| Login UI matches mockup | ✅ | `app/page.tsx` |
-| Email login end-to-end (PKCE S256 + OAuth) | ✅ | `app/api/auth/{login,callback}` |
-| Google login (idp=google path) | ✅ | `app/api/auth/login` |
-| Profile page with email + name + picture | ✅ | `app/profile/page.tsx` |
-| Name editable via PATCH + persists | ✅ | `app/api/profile` |
-| PKCE S256 + state validation | ✅ | `lib/pkce.ts`, `app/api/auth/callback` |
-| Client secrets server-only (never in bundle/Network) | ✅ | Route handlers only, encrypted session |
-| nginx + HTTPS (Let's Encrypt, auto-renew) | ✅ | `deploy/nginx.conf` |
-| README with how to run, deploy, demo URL | ✅ | This file |
-| **Bonus: Avatar upload (optional)** | ✅ | `app/api/profile/avatar` |
-| **Bonus: ID token HS256 validation** | ✅ | `lib/id-token.ts` |
+## What is where
 
-## Architecture
+| Requirement | Where it lives |
+|---|---|
+| Next.js + React | `next@16`, `react@19`, App Router under `app/` |
+| Login screen matching the mockup | `app/page.tsx` |
+| Email sign-in (`login_hint` → OTP) | `app/api/auth/login/route.ts` |
+| Google sign-in (`idp=google`) | same route, mutually exclusive with `login_hint` |
+| PKCE S256 + `state` | `lib/pkce.ts`, verified in `app/api/auth/callback/route.ts` |
+| Code exchange with `client_secret` | `lib/memorare.ts` (server only) |
+| Profile: email read-only, name editable | `app/profile/` |
+| Save name (`PATCH /api/profile`) | `app/api/profile/route.ts` |
+| Secrets never in the browser | no `NEXT_PUBLIC_*`, no client-side provider calls |
+| Nginx + Let's Encrypt TLS | `deploy/nginx.conf` |
+| **Bonus:** avatar upload | `app/api/profile/avatar/route.ts` → Amazon S3 |
+| **Bonus:** `id_token` verification | `lib/id-token.ts` |
 
-```
-┌─ User Browser ─────────────────────────────────────────────┐
-│  email/password via login page → /api/auth/login          │
-│  (email stays in browser only, no URL params in prod)     │
-└─────────────────────────────────────────────────────────┬──┘
-                                                         │
-        ┌────────────────────────────────────────────┤
-        ▼
-    ┌─ Next.js BFF Route Handlers ──────────────────┐
-    │ /api/auth/login:     Generate PKCE verifier   │
-    │                      Store in httpOnly cookie │
-    │                      Redirect to auth.memorare.ai
-    │                                               │
-    │ /api/auth/callback:  Exchange code + verifier│
-    │                      (client_secret server-side)
-    │                      Validate id_token (HS256)│
-    │                      Fetch & verify userinfo  │
-    │                      Seal JWT session cookie  │
-    │                      (A256GCM encryption)     │
-    │                                               │
-    │ /auth/callback:      Re-export handler above  │
-    │                      (registered path)        │
-    │                                               │
-    │ /api/profile:        PATCH name to upstream   │
-    │                      (Bearer token server-side)
-    │                                               │
-    │ /api/profile/avatar: Upload file to upstream  │
-    │                      (multipart + Bearer)     │
-    └───────────────────────────────────────────────┘
-        │
-        │ code_verifier (in memory), client_secret (in env)
-        │ NEVER leave this process
-        │
-        ▼
-    ┌─ auth.memorare.ai (Identity Provider) ────────┐
-    │ /api/authorize, /api/token, /api/userinfo,     │
-    │ /api/profile (PATCH), /api/profile/avatar      │
-    │                                                │
-    │ Returns: access_token (24h), id_token (HS256), │
-    │ profile + picture as { ok, profile }           │
-    └────────────────────────────────────────────────┘
+## How sign-in works
 
-Session: Encrypted JWE httpOnly cookie (mem_session)
-  - sub, email, name, picture, access_token
-  - Secure + HttpOnly + SameSite=lax
-  - Max-age = token expires_in (86400s)
+```mermaid
+sequenceDiagram
+    participant B as Browser
+    participant A as Next.js server
+    participant M as auth.memorare.ai
+
+    B->>A: GET /api/auth/login?email=…
+    Note over A: make verifier + state + nonce<br/>store in httpOnly cookies
+    A-->>B: 302 to /api/authorize (sends code_challenge)
+    B->>M: authorize (OTP or Google)
+    M-->>B: 302 to /auth/callback?code&state
+    B->>A: GET /auth/callback
+    Note over A: constant-time state compare
+    A->>M: POST /api/token (code + verifier + client_secret)
+    M-->>A: access_token + id_token
+    Note over A: verify id_token HS256, iss, aud, exp, nonce
+    A->>M: GET /api/userinfo
+    M-->>A: sub, email, name, picture
+    Note over A: id_token.sub must equal userinfo.sub
+    A-->>B: 302 /profile + encrypted session cookie
 ```
 
-## Key Decisions
+`client_secret` and `code_verifier` never leave the Node process. The session cookie is a JWE (`dir` + `A256GCM`), so the access token inside it is opaque even to whoever holds the cookie.
 
-**Why no refresh_token?** Discovery advertises `grant_types_supported: ["authorization_code"]` only (no refresh_token). On 24h token expiry, the correct "refresh" is a new authorize round-trip. The provider's SSO session (cookie on auth.memorare.ai) makes this silent if prompt=none is used.
+## Avatar upload
 
-**Why HS256 for id_token validation?** Discovery has no jwks_uri and all conventional JWKS paths 404. HS256 means the client_secret IS the key — which conveniently forces validation server-side (where the secret already lives) and prevents any client-side token manipulation.
+The provider offers `POST /api/profile/avatar`, and this app implements that path against Amazon S3 instead, then writes the resulting URL back to the provider profile so other Memorare apps see it too.
 
-**Why SameSite=lax not Strict?** The OAuth callback is a cross-site top-level GET. Strict would drop the state cookie on the redirect back from auth.memorare.ai, causing state mismatch. Lax allows the top-level GET but still blocks CSRF forms.
+```
+browser ──multipart──▶ /api/profile/avatar
+                         │  1. session required
+                         │  2. ≤ 2MB
+                         │  3. magic-byte sniff (not the Content-Type header)
+                         │  4. sharp → 512×512 WebP, EXIF dropped
+                         ▼
+                       S3 (private bucket, SSE-AES256)
+                         key: avatars/{sub}.webp
+                         │
+                         ▼
+                       PATCH /api/profile {"picture": "https://…/api/avatar/{sub}?v=…"}
 
-**Why nonce is optional?** The profile.html spec never mentions nonce (0 occurrences). The app sends it because OIDC Core mandates it IF claimed in id_token. On mismatch, it rejects — but only enforces if the provider echoed it.
+anyone ────GET────▶ /api/avatar/{sub}  ──302──▶ presigned S3 URL (5 min)
+```
 
-## How to Run Locally
+Four decisions worth calling out:
 
-### Prerequisites
-- Node.js 18+
-- npm
+**The bucket is private and stays private.** Public-read would be one line less code, but then every avatar is world-enumerable forever. Instead the app hands out a 5-minute presigned URL per request behind a stable address, so the URL stored on the provider profile never expires while the objects are never publicly readable.
 
-### Dev Mode (with mock IdP)
+**Content type is sniffed, not trusted.** A file can claim `image/png` and contain SVG with a `<script>` tag. `sniffImageType()` reads the actual magic bytes and rejects anything that is not JPEG, PNG or WebP.
 
-\`\`\`bash
+**Every image is re-encoded.** `sharp` converts to WebP at 512×512, which normalises the format and drops EXIF, including the GPS coordinates phone cameras attach to photos. Uploading someone's holiday snap should not publish where they took it.
+
+**The key is derived from `sub`, so there is no database.** One avatar per user, overwritten in place, cache-busted by a content hash in the `?v=` parameter. `isSafeSub()` constrains the subject to `[A-Za-z0-9_-]{1,64}` so a hostile subject cannot escape the `avatars/` prefix.
+
+If `AVATAR_BUCKET` is unset the route forwards the file to the provider's own avatar endpoint instead, so the app is correct with or without AWS.
+
+## Other decisions
+
+**`SameSite=Lax`, not `Strict`.** The callback arrives as a cross-site top-level GET. Under `Strict` the browser withholds the `state` cookie and every sign-in fails with a state mismatch.
+
+**`__Host-` prefix on the session cookie over HTTPS.** It pins the cookie to the exact origin, so no sibling subdomain can overwrite it. The prefix requires `Secure`, so plain-HTTP local dev keeps the bare name and readers accept either.
+
+**No refresh token handling.** Discovery advertises `grant_types_supported: ["authorization_code"]` only, and asking for `refresh_token` returns `unsupported_grant_type`. Access tokens last 24h; when one expires the app clears the session and sends the user back through authorize, which the provider's SSO session makes quick.
+
+**`id_token` is verified with the client secret.** Discovery publishes `HS256` and no `jwks_uri`, so the shared secret is the signing key. That forces verification onto the server, where the secret already lives.
+
+**Discovery is not fetched at runtime.** The document sits at `/api/.well-known/openid-configuration` rather than the RFC 8414 location, so a generic discovery client would not find it. Endpoints are configured directly and the observed values are pinned in `lib/id-token.ts`.
+
+## Running it locally
+
+```bash
 npm install
+cp .env.example .env.local     # placeholders work against the mock provider
 npm run dev
-\`\`\`
+```
 
-Opens http://localhost:3000. Auth flow runs against ./mock/idp.js on loopback:9000, exposed via localhost:3000/mock-idp/ as if it were auth.memorare.ai (OIDC discovery lives at /mock-idp/api/.well-known/...).
+Open http://localhost:3000. With no real credentials the app talks to `mock/idp.js`, a standalone provider that implements the documented contract and enforces it strictly: S256 verification, one-time codes, client authentication, `{error, error_description}` bodies, and `idp=google` rejected alongside `login_hint`.
+
+```bash
+node mock/idp.js    # 127.0.0.1:9000, started separately
+```
 
 ### Tests
 
-\`\`\`bash
-npx vitest run          # Unit tests (PKCE S256, session encryption)
-npm run build           # Type check + Next.js build
-\`\`\`
+```bash
+npm test            # PKCE vectors, session sealing, avatar rules
+npm run build       # type check and production build
+```
 
-## Deployment (AWS EC2 + nginx + Let's Encrypt)
+`tests/pkce.test.ts` checks the S256 challenge against the RFC 7636 worked example. `tests/session.test.ts` proves a tampered or foreign-key cookie fails to open. `tests/avatar-rules.test.ts` covers the sniffer and the subject whitelist.
 
-### One-Time Setup
+## Environment
 
-\`\`\`bash
-# On your server
-ssh ubuntu@<ip>
-cd /opt/memorare-app
+| Variable | Purpose |
+|---|---|
+| `AUTH_BASE` | Provider origin. `https://auth.memorare.ai` in production |
+| `MEMORARE_CLIENT_ID` | Issued by Memorare |
+| `MEMORARE_CLIENT_SECRET` | Issued by Memorare. Server only |
+| `MEMORARE_REDIRECT_URI` | Must match the registered value exactly |
+| `APP_URL` | Public origin, used for redirects behind the proxy |
+| `SESSION_SECRET` | ≥ 32 chars, encrypts the session cookie |
+| `AVATAR_BUCKET` | Optional. S3 bucket for avatars |
+| `AWS_REGION` | Optional. Defaults to `us-east-1` |
 
-# Install Node
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+No AWS keys. The EC2 instance carries an IAM role whose only permission is `PutObject`, `GetObject` and `DeleteObject` on `arn:aws:s3:::<bucket>/avatars/*`.
 
-# Install npm dependencies
+## Deploying
+
+Nginx terminates TLS and proxies to Next.js on loopback. Ports 3000 and 9000 are never exposed.
+
+```bash
+git pull
 npm ci
-
-# Build
 npm run build
-
-# Remove Turbopack cache (contains env snapshots)
-rm -rf .next/cache
-
-# Set env
-cat > .env.local << 'EOF'
-CLIENT_ID=<your-client-id>
-CLIENT_SECRET=<your-client-secret>
-APP_URL=https://test.vault-mind.com
-AUTH_BASE=https://auth.memorare.ai
-REDIRECT_URI=https://test.vault-mind.com/auth/callback
-EOF
-chmod 600 .env.local
-
-# Install systemd units
-sudo cp deploy/memorare-app.service /etc/systemd/system/
-sudo systemctl daemon-reload && sudo systemctl enable memorare-app && sudo systemctl start memorare-app
-
-# Install & configure nginx
-sudo apt-get install -y nginx certbot python3-certbot-nginx
-sudo cp deploy/nginx-http.conf /etc/nginx/sites-available/memorare
-sudo ln -sf /etc/nginx/sites-available/memorare /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl restart nginx
-
-# Get SSL cert (auto-renew via certbot timer)
-sudo certbot --nginx -d test.vault-mind.com
-
-# Update nginx config to HTTPS version
-sudo cp deploy/nginx.conf /etc/nginx/sites-available/memorare
-sudo nginx -t && sudo systemctl reload nginx
-\`\`\`
-
-### Redeploy (CI/CD or manual)
-
-\`\`\`bash
-git pull origin main
-npm ci && npm run build && rm -rf .next/cache
+rm -rf .next/cache          # Turbopack snapshots env values into its cache
 sudo systemctl restart memorare-app
-sudo systemctl reload nginx
-\`\`\`
+```
 
-### Tear Down
+First-time setup lives in `deploy/`: `nginx-http.conf` to answer the ACME challenge, `certbot --nginx -d <host>`, then `nginx.conf` for the TLS listener plus HSTS, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`. `memorare-app.service` runs Next.js as a systemd unit bound to `127.0.0.1:3000`.
 
-\`\`\`bash
-aws ec2 terminate-instances --instance-ids i-0d6662a2e2a0aa138
-aws ec2 release-address --allocation-id eipalloc-00810ebc9d2b4f801
-\`\`\`
+## Switching to real credentials
 
-(Instance & EIP IDs from AWS console or `aws ec2 describe-instances`)
+The demo currently signs in against the bundled mock provider, because client credentials have not been issued yet. Moving to the real one is a config change, not a code change:
 
-## Secret Management
+```diff
+- AUTH_BASE=https://test.vault-mind.com/mock-idp
++ AUTH_BASE=https://auth.memorare.ai
+  MEMORARE_CLIENT_ID=<issued>
+  MEMORARE_CLIENT_SECRET=<issued>
+  MEMORARE_REDIRECT_URI=https://test.vault-mind.com/auth/callback
+```
 
-- **.env.local** (600 mode): CLIENT_SECRET, SESSION_SECRET. Never committed.
-- **Turbopack cache purge**: `rm -rf .next/cache` on deploy (cache snapshots env values).
-- **NEXT_PUBLIC_ prefix**: NOT used for any secret. Verified via `npm run build && grep -r NEXT_PUBLIC_ .next/static/`.
-- **Session encryption**: jose A256GCM with SERVER-SIDE SESSION_SECRET.
-
-## Spec Compliance
-
-- ✅ OAuth 2.0 authorization-code flow (RFC 6749)
-- ✅ PKCE S256 (RFC 7636)
-- ✅ OIDC Core (OpenID Connect)
-  - ID token HS256 signature validation
-  - Sub cross-check (id_token.sub === userinfo.sub)
-  - Nonce validation (if claimed)
-- ✅ Server-side secrets (client_secret, code_verifier never in browser)
-- ✅ Encrypted session (JWE A256GCM)
-- ✅ HTTP/2, TLS 1.2+, security headers
-
-## File Structure
-
-\`\`\`
-app/
-  page.tsx                   # Login UI (email + Google buttons)
-  layout.tsx                 # Root layout
-  globals.css                # Tailwind reset
-  profile/
-    page.tsx                 # Profile (server-rendered, redirects if no session)
-    profile-form.tsx         # Name edit form (client component)
-  api/auth/
-    login/route.ts           # Initiate OAuth (generate PKCE + state)
-    callback/route.ts        # Exchange code + validate + seal session
-    logout/route.ts          # Clear cookies, redirect to provider
-  auth/
-    callback/route.ts        # Re-export /api/auth/callback (registered path)
-  api/profile/
-    route.ts                 # PATCH /api/profile (name edit)
-    avatar/route.ts          # POST multipart avatar upload
-lib/
-  config.ts                  # Env validation (server-only)
-  cookies.ts                 # Cookie constants + isSecureRequest()
-  pkce.ts                    # PKCE verifier, S256 challenge, state, nonce
-  id-token.ts                # ID token HS256 verification
-  memorare.ts                # API client (exchangeCode, fetchUserinfo, getProfile, patchProfile)
-  session.ts                 # JWE sealing/unsealing (A256GCM)
-  origin.ts                  # publicOrigin() for redirects behind proxy
-mock/
-  idp.js                     # Standalone mock identity provider (Node.js)
-deploy/
-  nginx.conf                 # HTTPS config (with Let's Encrypt cert)
-  nginx-http.conf            # HTTP-only (pre-SSL)
-  memorare-app.service       # systemd unit for Next.js
-  memorare-mock.service      # systemd unit for mock IdP
-tests/
-  pkce.test.ts               # PKCE S256 + state generation
-  session.test.ts            # Session encryption/decryption
-\`\`\`
-
-## Known Limitations
-
-- **Mock IdP only**: Real Memorare credentials not yet provisioned. Once received, change `AUTH_BASE` in .env.local and restart.
-- **No refresh_token**: App re-auths via SSO session after 24h expiry.
-- **No prompt=none silent SSO**: Deferred to avoid loop guards. Can be added in <30 min if needed.
-
----
-
-Built with ❤️ for ibl.ai / Memorare. Next.js 15 + React 19 + TypeScript.
+Then drop the `/mock-idp/` block from the nginx config and restart. `/auth/callback` is already served at the path Memorare registers.

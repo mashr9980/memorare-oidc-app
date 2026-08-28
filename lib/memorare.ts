@@ -74,7 +74,9 @@ export async function getProfile(accessToken: string): Promise<Profile> {
   return (json as { profile?: Profile }).profile ?? (json as Profile);
 }
 
-export async function patchProfile(accessToken: string, name: string): Promise<Profile> {
+export type ProfilePatch = { name?: string | null; picture?: string | null };
+
+export async function patchProfile(accessToken: string, patch: ProfilePatch): Promise<Profile> {
   const cfg = serverConfig();
   const res = await fetch(`${cfg.authBase}/api/profile`, {
     method: "PATCH",
@@ -82,7 +84,7 @@ export async function patchProfile(accessToken: string, name: string): Promise<P
       Authorization: `Bearer ${accessToken}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(patch),
     cache: "no-store",
   });
   if (res.status === 401) {

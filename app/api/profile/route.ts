@@ -23,7 +23,7 @@ export async function PATCH(req: NextRequest) {
   if (name.length > 255) return NextResponse.json({ error: "name_too_long" }, { status: 400 });
 
   try {
-    await patchProfile(session.accessToken, name);
+    await patchProfile(session.accessToken, { name });
     return NextResponse.json({ name });
   } catch (err) {
     if (err instanceof Error && err.message === "token_expired") {
