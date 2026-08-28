@@ -1,0 +1,17 @@
+# Local stand-in for the Memorare IdP, loopback only. Remove once real
+# credentials are configured and AUTH_BASE points at auth.memorare.ai.
+[Unit]
+Description=Memorare mock IdP (loopback only)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/memorare-app
+ExecStart=/usr/bin/node mock/idp.js
+Restart=always
+RestartSec=3
+Environment=MOCK_CLIENT_ID=demo-client-id
+Environment=MOCK_CLIENT_SECRET=__MOCK_SECRET__
+
+[Install]
+WantedBy=multi-user.target

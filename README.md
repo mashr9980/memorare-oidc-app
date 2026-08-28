@@ -3,7 +3,7 @@
 Next.js + React app integrating the Memorare Identity Provider over OAuth 2.0 /
 OIDC with PKCE, plus an editable user profile.
 
-**Demo:** `https://<HOSTNAME>` _(fill in once deployed)_
+**Demo:** https://test.vault-mind.com
 
 ## How it works
 
