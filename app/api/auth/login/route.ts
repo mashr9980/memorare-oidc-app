@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { serverConfig } from "@/lib/config";
 import { challengeFor, createState, createVerifier } from "@/lib/pkce";
 import { COOKIE, isSecureRequest } from "@/lib/cookies";
+import { publicOrigin } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
 
@@ -17,14 +18,14 @@ export async function GET(req: NextRequest) {
     cfg = serverConfig();
   } catch (err) {
     console.error("[auth/login] configuration error", err);
-    return NextResponse.redirect(new URL("/?error=server_misconfigured", req.nextUrl.origin));
+    return NextResponse.redirect(`${publicOrigin(req)}/?error=server_misconfigured`);
   }
 
   const email = req.nextUrl.searchParams.get("email")?.trim();
   const useGoogle = req.nextUrl.searchParams.get("idp") === "google";
 
   if (!useGoogle && !email) {
-    return NextResponse.redirect(new URL("/?error=email_required", req.nextUrl.origin));
+    return NextResponse.redirect(`${publicOrigin(req)}/?error=email_required`);
   }
 
   const verifier = createVerifier();

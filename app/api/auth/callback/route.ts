@@ -3,11 +3,12 @@ import { exchangeCode, fetchUserinfo } from "@/lib/memorare";
 import { sealSession } from "@/lib/session";
 import { COOKIE, isSecureRequest } from "@/lib/cookies";
 import { safeEqual } from "@/lib/pkce";
+import { publicOrigin } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
 
 function fail(req: NextRequest, reason: string) {
-  const res = NextResponse.redirect(new URL(`/?error=${reason}`, req.nextUrl.origin));
+  const res = NextResponse.redirect(`${publicOrigin(req)}/?error=${reason}`);
   res.cookies.delete(COOKIE.verifier);
   res.cookies.delete(COOKIE.state);
   return res;
@@ -51,7 +52,7 @@ export async function GET(req: NextRequest) {
       tokens.expires_in ?? 3600
     );
 
-    const res = NextResponse.redirect(new URL("/profile", req.nextUrl.origin));
+    const res = NextResponse.redirect(`${publicOrigin(req)}/profile`);
     res.cookies.set(COOKIE.session, sealed, {
       httpOnly: true,
       secure: isSecureRequest(req),
