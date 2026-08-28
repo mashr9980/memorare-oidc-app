@@ -30,7 +30,9 @@ export async function GET(req: NextRequest) {
   const verifier = createVerifier();
   const state = createState();
 
-  const authorize = new URL("/api/authorize", cfg.authBase);
+  // Concatenate rather than new URL(path, base): a leading-slash path would
+  // discard any path prefix on AUTH_BASE.
+  const authorize = new URL(`${cfg.authBase.replace(/\/$/, "")}/api/authorize`);
   authorize.searchParams.set("response_type", "code");
   authorize.searchParams.set("client_id", cfg.clientId);
   authorize.searchParams.set("redirect_uri", cfg.redirectUri);

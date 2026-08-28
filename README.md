@@ -64,6 +64,7 @@ If only the deployed HTTPS callback is registered, test on the server instead.
 
 ```bash
 npm ci && npm run build
+rm -rf .next/cache     # Turbopack's build cache snapshots env values; it is never served, but don't leave it on disk
 sudo cp deploy/memorare-app.service /etc/systemd/system/
 sudo systemctl daemon-reload && sudo systemctl enable --now memorare-app
 ```
@@ -103,8 +104,14 @@ npm run build && npm start
 ```
 
 Both login paths, name persistence, code replay, and wrong-verifier rejection
-were verified end-to-end against this mock. Point `AUTH_BASE` back at
-`https://auth.memorare.ai` for the real deployment.
+were verified end-to-end against this mock.
+
+**The public demo runs this way.** The mock is bound to loopback; nginx exposes
+only its browser-facing endpoints under `/mock-idp/` (see `deploy/nginx.conf`),
+and `AUTH_BASE=https://<host>/mock-idp`. The app's own server-to-server calls
+(token exchange, userinfo, profile) go through the same HTTPS origin. Switching
+to the real provider is a config change: set `AUTH_BASE=https://auth.memorare.ai`
+and the issued `client_id` / `client_secret`, then delete the `/mock-idp/` block.
 
 ## Verifying no secrets are exposed
 

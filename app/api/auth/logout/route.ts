@@ -7,7 +7,7 @@ export async function GET(req: NextRequest) {
   const authBase = process.env.AUTH_BASE ?? "https://auth.memorare.ai";
   const appUrl = process.env.APP_URL ?? req.nextUrl.origin;
 
-  const target = new URL("/logout", authBase);
+  const target = new URL(`${authBase.replace(/\/$/, "")}/logout`);
   target.searchParams.set("return_to", `${appUrl.replace(/\/$/, "")}/`);
 
   const res = NextResponse.redirect(target.toString());
