@@ -1,8 +1,9 @@
 const http = require("http");
 const { createHash, randomBytes, createHmac } = require("crypto");
 
-const CLIENT_ID = process.env.MOCK_CLIENT_ID || "local-dev-client-id";
-const CLIENT_SECRET = process.env.MOCK_CLIENT_SECRET || "local-dev-client-secret-PLACEHOLDER";
+const CLIENT_ID = process.env.MOCK_CLIENT_ID || process.env.MEMORARE_CLIENT_ID || "local-dev-client-id";
+const CLIENT_SECRET =
+  process.env.MOCK_CLIENT_SECRET || process.env.MEMORARE_CLIENT_SECRET || "local-dev-client-secret-PLACEHOLDER";
 const PORT = Number(process.env.MOCK_PORT || 9000);
 // Behind the nginx demo prefix the SSO cookie must not be sent to the app itself.
 const COOKIE_PATH = process.env.MOCK_COOKIE_PATH || "/";

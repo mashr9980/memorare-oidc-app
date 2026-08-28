@@ -9,11 +9,11 @@ After=network.target
 Environment=MOCK_COOKIE_PATH=/mock-idp
 Type=simple
 WorkingDirectory=/opt/memorare-app
+# Share the app's credentials so the two can never disagree.
+EnvironmentFile=-/opt/memorare-app/.env.local
 ExecStart=/usr/bin/node mock/idp.js
 Restart=always
 RestartSec=3
-Environment=MOCK_CLIENT_ID=demo-client-id
-Environment=MOCK_CLIENT_SECRET=__MOCK_SECRET__
 
 [Install]
 WantedBy=multi-user.target
