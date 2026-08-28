@@ -22,10 +22,12 @@ Every token exchange, every provider call, and every secret stays on the server.
 | Code exchange with `client_secret` | `lib/memorare.ts` (server only) |
 | Profile: email read-only, name editable | `app/profile/` |
 | Save name (`PATCH /api/profile`) | `app/api/profile/route.ts` |
+| Silent SSO (`prompt=none` → `login_required`) | `app/api/auth/sso/route.ts` |
 | Secrets never in the browser | no `NEXT_PUBLIC_*`, no client-side provider calls |
 | Nginx + Let's Encrypt TLS | `deploy/nginx.conf` |
 | **Bonus:** avatar upload | `app/api/profile/avatar/route.ts` → Amazon S3 |
 | **Bonus:** `id_token` verification | `lib/id-token.ts` |
+| **Bonus:** end-to-end tests + CI | `e2e/`, `.github/workflows/ci.yml` |
 
 ## How sign-in works
 
@@ -85,7 +87,15 @@ Four decisions worth calling out:
 
 If `AVATAR_BUCKET` is unset the route forwards the file to the provider's own avatar endpoint instead, so the app is correct with or without AWS.
 
+## Silent single sign-on
+
+Auth is a shared identity provider, so someone arriving from another Memorare app usually already has a session there. Before rendering the form, the app makes one `prompt=none` authorize round trip carrying neither `login_hint` nor `idp`, exactly as the flow documentation describes.
+
+If the provider recognises the visitor it returns a code and they land on their profile without clicking anything. If it answers `error=login_required` the app shows the normal form with no error banner, because nothing actually went wrong. A `mem_sso` cookie records that the attempt happened, so a visitor with no provider session sees the form once rather than bouncing through a redirect loop. Signing out clears it, since the provider session ends too.
+
 ## Other decisions
+
+**Email sign-in is a POST.** A GET would write the address into browser history and every proxy log along the way, and any link prefetcher following it would make the provider send an OTP nobody asked for. The Google button stays a GET, since it carries no personal data.
 
 **`SameSite=Lax`, not `Strict`.** The callback arrives as a cross-site top-level GET. Under `Strict` the browser withholds the `state` cookie and every sign-in fails with a state mismatch.
 
@@ -114,11 +124,17 @@ node mock/idp.js    # 127.0.0.1:9000, started separately
 ### Tests
 
 ```bash
-npm test            # PKCE vectors, session sealing, avatar rules
-npm run build       # type check and production build
+npm run typecheck   # tsc
+npm run lint        # eslint
+npm test            # unit: PKCE vectors, session sealing, avatar rules
+npm run test:e2e    # Playwright: the real flow in a real browser
 ```
 
 `tests/pkce.test.ts` checks the S256 challenge against the RFC 7636 worked example. `tests/session.test.ts` proves a tampered or foreign-key cookie fails to open. `tests/avatar-rules.test.ts` covers the sniffer and the subject whitelist.
+
+The Playwright suite drives Chromium through both sign-in paths, saves a name, uploads and removes a photo, signs out, and exercises silent SSO in both directions. Two of its checks are about secrets rather than features: one asserts the session cookie is `httpOnly` and invisible to `document.cookie`, the other scrapes every document and static chunk the browser downloads and fails if a secret appears in any of them.
+
+`.github/workflows/ci.yml` runs all of that on every push, plus `scripts/check-bundle-secrets.sh`, which builds with sentinel secrets and greps the entire output for them.
 
 ## Environment
 
@@ -146,6 +162,8 @@ npm run build
 rm -rf .next/cache          # Turbopack snapshots env values into its cache
 sudo systemctl restart memorare-app
 ```
+
+`GET /healthz` is a liveness probe. `/api/auth/` is rate limited to 12 requests a minute per address, because each sign-in redirect makes the provider send an OTP email. `client_max_body_size` is 3MB, just above the app's own 2MB avatar rule, so oversized uploads get the app's JSON error rather than the proxy's HTML page.
 
 First-time setup lives in `deploy/`: `nginx-http.conf` to answer the ACME challenge, `certbot --nginx -d <host>`, then `nginx.conf` for the TLS listener plus HSTS, `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`. `memorare-app.service` runs Next.js as a systemd unit bound to `127.0.0.1:3000`.
 

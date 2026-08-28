@@ -1,51 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
-import { serverConfig } from "@/lib/config";
-import { challengeFor, createState, createVerifier, generateNonce } from "@/lib/pkce";
-import { COOKIE, isSecureRequest } from "@/lib/cookies";
+import { isSecureRequest } from "@/lib/cookies";
 import { publicOrigin } from "@/lib/origin";
+import { startAuthorize } from "@/lib/authorize";
 
 export const dynamic = "force-dynamic";
-export async function GET(req: NextRequest) {
-  let cfg;
+
+function begin(req: NextRequest, email: string | null, google: boolean) {
   try {
-    cfg = serverConfig();
+    if (google) return startAuthorize({ google: true }, isSecureRequest(req));
+    if (!email) return NextResponse.redirect(`${publicOrigin(req)}/?error=email_required`, { status: 303 });
+    return startAuthorize({ email }, isSecureRequest(req));
   } catch (err) {
     console.error("[auth/login] configuration error", err);
-    return NextResponse.redirect(`${publicOrigin(req)}/?error=server_misconfigured`);
+    return NextResponse.redirect(`${publicOrigin(req)}/?error=server_misconfigured`, { status: 303 });
   }
+}
 
-  const email = req.nextUrl.searchParams.get("email")?.trim();
-  const useGoogle = req.nextUrl.searchParams.get("idp") === "google";
+/**
+ * Email sign-in is POST only. A GET would put the address in browser history and
+ * proxy logs, and a link prefetcher following it would make the provider send an
+ * OTP nobody asked for.
+ */
+export async function POST(req: NextRequest) {
+  const form = await req.formData().catch(() => null);
+  if (!form) return NextResponse.redirect(`${publicOrigin(req)}/?error=email_required`, { status: 303 });
+  const email = String(form.get("email") ?? "").trim();
+  const google = String(form.get("idp") ?? "") === "google";
+  return begin(req, email || null, google);
+}
 
-  if (!useGoogle && !email) {
-    return NextResponse.redirect(`${publicOrigin(req)}/?error=email_required`);
-  }
-
-  const verifier = createVerifier();
-  const state = createState();
-  const nonce = generateNonce();
-  const authorize = new URL(`${cfg.authBase.replace(/\/$/, "")}/api/authorize`);
-  authorize.searchParams.set("response_type", "code");
-  authorize.searchParams.set("client_id", cfg.clientId);
-  authorize.searchParams.set("redirect_uri", cfg.redirectUri);
-  authorize.searchParams.set("scope", "openid profile email");
-  authorize.searchParams.set("state", state);
-  authorize.searchParams.set("nonce", nonce);
-  authorize.searchParams.set("code_challenge", challengeFor(verifier));
-  authorize.searchParams.set("code_challenge_method", "S256");
-  if (useGoogle) authorize.searchParams.set("idp", "google");
-  else authorize.searchParams.set("login_hint", email!);
-
-  const res = NextResponse.redirect(authorize.toString());
-  const opts = {
-    httpOnly: true,
-    secure: isSecureRequest(req),
-    sameSite: "lax" as const,
-    path: "/",
-    maxAge: 600,
-  };
-  res.cookies.set(COOKIE.verifier, verifier, opts);
-  res.cookies.set(COOKIE.state, state, opts);
-  res.cookies.set(COOKIE.nonce, nonce, opts);
-  return res;
+/** Kept for the Google button, which carries no personal data. */
+export async function GET(req: NextRequest) {
+  return begin(req, null, req.nextUrl.searchParams.get("idp") === "google");
 }

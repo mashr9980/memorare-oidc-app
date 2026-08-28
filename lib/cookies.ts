@@ -3,6 +3,7 @@ export const COOKIE = {
   state: "mem_state",
   nonce: "mem_nonce",
   session: "mem_session",
+  ssoTried: "mem_sso",
 } as const;
 
 /**

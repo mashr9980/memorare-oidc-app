@@ -1,5 +1,7 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
+import { COOKIE } from "@/lib/cookies";
 
 export const dynamic = "force-dynamic";
 
@@ -8,8 +10,11 @@ const ERRORS: Record<string, string> = {
   state_mismatch: "That login attempt expired. Please try again.",
   missing_params: "That login attempt expired. Please try again.",
   exchange_failed: "We couldn't complete the sign in. Please try again.",
-  auth_failed: "Sign in was cancelled or failed. Please try again.",
+  auth_failed: "We couldn't complete the sign in. Please try again.",
+  auth_cancelled: "Sign in was cancelled.",
   server_misconfigured: "Sign in is unavailable right now.",
+  nonce_mismatch: "That login attempt expired. Please try again.",
+  subject_mismatch: "We couldn't verify that sign in. Please try again.",
 };
 
 function GoogleLogo() {
@@ -31,6 +36,12 @@ export default async function LoginPage({
   if (await getSession()) redirect("/profile");
 
   const { error } = await searchParams;
+
+  // Try the provider's SSO session once before showing the form, so a visitor
+  // already signed in to another Memorare app never sees this screen.
+  const jar = await cookies();
+  if (!error && !jar.get(COOKIE.ssoTried)) redirect("/api/auth/sso");
+
   const message = error ? ERRORS[error] ?? "Something went wrong. Please try again." : null;
 
   return (
@@ -45,7 +56,7 @@ export default async function LoginPage({
           </p>
         )}
 
-        <form action="/api/auth/login" method="GET" className="space-y-5">
+        <form action="/api/auth/login" method="POST" className="space-y-5">
           <label htmlFor="email" className="sr-only">
             Email
           </label>
@@ -68,13 +79,16 @@ export default async function LoginPage({
 
         <p className="my-5 text-center text-[15px] text-gray-500">OR</p>
 
-        <a
-          href="/api/auth/login?idp=google"
-          className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white py-3.5 text-[15px] text-gray-800 transition-colors hover:bg-gray-50"
-        >
-          <GoogleLogo />
-          Continue with Google
-        </a>
+        <form action="/api/auth/login" method="POST">
+          <input type="hidden" name="idp" value="google" />
+          <button
+            type="submit"
+            className="flex w-full items-center justify-center gap-3 rounded-lg border border-gray-200 bg-white py-3.5 text-[15px] text-gray-800 transition-colors hover:bg-gray-50"
+          >
+            <GoogleLogo />
+            Continue with Google
+          </button>
+        </form>
 
         <p className="mt-6 text-center text-[13px] text-gray-500">
           By continuing, you agree to the terms of service and privacy policy.

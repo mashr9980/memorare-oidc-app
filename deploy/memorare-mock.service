@@ -5,6 +5,8 @@ Description=Memorare mock IdP (loopback only)
 After=network.target
 
 [Service]
+# Behind nginx the mock lives under /mock-idp/, so scope its SSO cookie there.
+Environment=MOCK_COOKIE_PATH=/mock-idp
 Type=simple
 WorkingDirectory=/opt/memorare-app
 ExecStart=/usr/bin/node mock/idp.js

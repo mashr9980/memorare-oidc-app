@@ -13,5 +13,6 @@ export async function GET(req: NextRequest) {
   const res = NextResponse.redirect(target.toString());
   res.cookies.delete(COOKIE.session);
   res.cookies.delete(HOST_SESSION);
+  res.cookies.delete(COOKIE.ssoTried);
   return res;
 }

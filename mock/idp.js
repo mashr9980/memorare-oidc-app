@@ -3,7 +3,9 @@ const { createHash, randomBytes, createHmac } = require("crypto");
 
 const CLIENT_ID = process.env.MOCK_CLIENT_ID || "local-dev-client-id";
 const CLIENT_SECRET = process.env.MOCK_CLIENT_SECRET || "local-dev-client-secret-PLACEHOLDER";
-const PORT = 9000;
+const PORT = Number(process.env.MOCK_PORT || 9000);
+// Behind the nginx demo prefix the SSO cookie must not be sent to the app itself.
+const COOKIE_PATH = process.env.MOCK_COOKIE_PATH || "/";
 
 const codes = new Map();  // code  -> { challenge, sub, nonce, used }
 const tokens = new Map(); // token -> sub
@@ -25,6 +27,12 @@ function deny(res, status, error, detail) {
   if (status === 401) headers["WWW-Authenticate"] = "Bearer";
   res.writeHead(status, headers);
   res.end(JSON.stringify({ error, error_description: detail ?? "" }));
+}
+
+function cookie(req, name) {
+  const raw = req.headers.cookie || "";
+  const hit = raw.split(";").map((c) => c.trim()).find((c) => c.startsWith(name + "="));
+  return hit ? decodeURIComponent(hit.slice(name.length + 1)) : undefined;
 }
 
 function bearer(req) {
@@ -59,6 +67,37 @@ const server = http.createServer((req, res) => {
     if (q.get("idp") === "google" && q.get("login_hint"))
       return deny(res, 400, "invalid_request", "idp=google must not carry login_hint");
 
+    const back = new URL(q.get("redirect_uri"));
+
+    // Silent check: no interaction allowed, so it either rides an existing SSO
+    // session or comes straight back with login_required.
+    if (q.get("prompt") === "none") {
+      if (q.get("login_hint") || q.get("idp"))
+        return deny(res, 400, "invalid_request", "prompt=none must not carry login_hint or idp");
+
+      const sso = cookie(req, "mock_sso");
+      if (!sso || !users.has(sso)) {
+        back.searchParams.set("error", "login_required");
+        back.searchParams.set("error_description", "No Auth SSO session.");
+        back.searchParams.set("state", q.get("state"));
+        console.log("[mock-idp] authorize prompt=none -> login_required");
+        res.writeHead(302, { Location: back.toString() });
+        return res.end();
+      }
+      const silentCode = b64url(randomBytes(16));
+      codes.set(silentCode, {
+        challenge: q.get("code_challenge"),
+        sub: sso,
+        nonce: q.get("nonce"),
+        used: false,
+      });
+      back.searchParams.set("code", silentCode);
+      back.searchParams.set("state", q.get("state"));
+      console.log("[mock-idp] authorize prompt=none -> silent code for " + sso);
+      res.writeHead(302, { Location: back.toString() });
+      return res.end();
+    }
+
     const user =
       q.get("idp") === "google"
         ? { sub: "g-100", email: "googleuser@gmail.com", name: null, picture: "https://example.com/avatar.png" }
@@ -73,11 +112,13 @@ const server = http.createServer((req, res) => {
       used: false,
     });
 
-    const back = new URL(q.get("redirect_uri"));
     back.searchParams.set("code", code);
     back.searchParams.set("state", q.get("state"));
     console.log(`[mock-idp] authorize ok (${q.get("idp") === "google" ? "google" : "email"}) -> code issued`);
-    res.writeHead(302, { Location: back.toString() });
+    res.writeHead(302, {
+      Location: back.toString(),
+      "Set-Cookie": `mock_sso=${profile.sub}; Path=${COOKIE_PATH}; HttpOnly; SameSite=Lax`,
+    });
     return res.end();
   }
 
@@ -204,7 +245,11 @@ if (req.method === "GET" && u.pathname === "/api/userinfo") {
 
   if (req.method === "GET" && u.pathname === "/logout") {
     const to = q.get("return_to") || q.get("post_logout_redirect_uri") || q.get("redirect_uri") || "/";
-    res.writeHead(302, { Location: to });
+    console.log("[mock-idp] logout -> SSO session ended");
+    res.writeHead(302, {
+      Location: to,
+      "Set-Cookie": `mock_sso=; Path=${COOKIE_PATH}; HttpOnly; SameSite=Lax; Max-Age=0`,
+    });
     return res.end();
   }
 

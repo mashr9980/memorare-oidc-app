@@ -8,10 +8,12 @@ import { verifyIDToken } from "@/lib/id-token";
 
 export const dynamic = "force-dynamic";
 
-function fail(req: NextRequest, reason: string) {
-  const res = NextResponse.redirect(`${publicOrigin(req)}/?error=${reason}`);
+function fail(req: NextRequest, reason: string | null) {
+  const target = reason ? `${publicOrigin(req)}/?error=${reason}` : `${publicOrigin(req)}/`;
+  const res = NextResponse.redirect(target);
   res.cookies.delete(COOKIE.verifier);
   res.cookies.delete(COOKIE.state);
+  res.cookies.delete(COOKIE.nonce);
   return res;
 }
 
@@ -20,10 +22,10 @@ export async function GET(req: NextRequest) {
 
   const upstreamError = params.get("error");
   if (upstreamError) {
-    if (upstreamError === "login_required") {
-      console.error("[auth/callback] login required - show login UI");
-      return fail(req, "login_required");
-    }
+    // The silent check answering login_required just means there is no provider
+    // session. Fall through to the form without showing an error.
+    if (upstreamError === "login_required") return fail(req, null);
+    if (upstreamError === "access_denied") return fail(req, "auth_cancelled");
     console.error("[auth/callback] provider returned error", upstreamError);
     return fail(req, "auth_failed");
   }
