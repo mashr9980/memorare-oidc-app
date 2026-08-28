@@ -3,6 +3,19 @@
 import { useEffect, useRef, useState } from "react";
 import { AVATAR_ACCEPT, AVATAR_MAX_BYTES, AVATAR_TYPES } from "@/lib/avatar-rules";
 
+function messageFor(code: string): string {
+  switch (code) {
+    case "file_too_large":
+      return "That image is over 2MB. Try a smaller one.";
+    case "unsupported_image_type":
+      return "That file isn't a JPEG, PNG or WebP.";
+    case "token_expired":
+      return "Your session expired. Sign in again.";
+    default:
+      return "Upload failed. Please try again.";
+  }
+}
+
 export default function AvatarUploader({
   initialPicture,
   fallback,
@@ -41,11 +54,12 @@ export default function AvatarUploader({
       const body = new FormData();
       body.append("avatar", file);
       const res = await fetch("/api/profile/avatar", { method: "POST", body });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data?.error ?? "upload_failed");
-      setPicture(data.picture ?? null);
-    } catch {
-      setError("Upload failed. Please try again.");
+      // A proxy rejecting the body answers with HTML, so never assume JSON.
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.error ?? (res.status === 413 ? "file_too_large" : "upload_failed"));
+      setPicture(data?.picture ?? null);
+    } catch (err) {
+      setError(messageFor(err instanceof Error ? err.message : "upload_failed"));
       setPreview(null);
     } finally {
       setBusy(false);
