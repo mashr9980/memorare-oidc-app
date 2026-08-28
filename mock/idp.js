@@ -76,11 +76,18 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === "GET" && (u.pathname === "/api/userinfo" || u.pathname === "/api/profile")) {
+  if (req.method === "GET" && u.pathname === "/api/userinfo") {
     const user = bearer(req);
     if (!user) return deny(res, 401, "invalid_token");
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify(user));
+  }
+
+  if (req.method === "GET" && u.pathname === "/api/profile") {
+    const user = bearer(req);
+    if (!user) return deny(res, 401, "invalid_token");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ ok: true, profile: user }));
   }
 
   if (req.method === "PATCH" && u.pathname === "/api/profile") {
@@ -91,12 +98,12 @@ const server = http.createServer((req, res) => {
     req.on("end", () => {
       let parsed;
       try { parsed = JSON.parse(body); } catch { return deny(res, 400, "invalid_json"); }
-      if ("email" in parsed) return deny(res, 400, "email_not_editable"); // API rejects email changes
+      if ("email" in parsed) return deny(res, 400, "email_not_editable");
       if (typeof parsed.name !== "string" || !parsed.name.trim()) return deny(res, 400, "name_required");
       user.name = parsed.name.trim();
       console.log(`[mock-idp] profile PATCH ok -> name="${user.name}"`);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(user));
+      res.end(JSON.stringify({ ok: true, profile: user }));
     });
     return;
   }

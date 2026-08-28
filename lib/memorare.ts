@@ -67,7 +67,8 @@ export async function getProfile(accessToken: string): Promise<Profile> {
     console.error("[memorare] profile GET failed", res.status, await res.text());
     throw new Error("profile_fetch_failed");
   }
-  return (await res.json()) as Profile;
+  const json = (await res.json()) as { ok?: boolean; profile?: Profile } | Profile;
+  return (json as { profile?: Profile }).profile ?? (json as Profile);
 }
 
 export async function patchProfile(accessToken: string, name: string): Promise<Profile> {
@@ -85,5 +86,6 @@ export async function patchProfile(accessToken: string, name: string): Promise<P
     console.error("[memorare] profile PATCH failed", res.status, await res.text());
     throw new Error("profile_update_failed");
   }
-  return (await res.json()) as Profile;
+  const json = (await res.json()) as { ok?: boolean; profile?: Profile } | Profile;
+  return (json as { profile?: Profile }).profile ?? (json as Profile);
 }

@@ -20,11 +20,11 @@ export async function PATCH(req: NextRequest) {
       : "";
 
   if (!name) return NextResponse.json({ error: "name_required" }, { status: 400 });
-  if (name.length > 200) return NextResponse.json({ error: "name_too_long" }, { status: 400 });
+  if (name.length > 255) return NextResponse.json({ error: "name_too_long" }, { status: 400 });
 
   try {
-    const updated = await patchProfile(session.accessToken, name);
-    return NextResponse.json({ name: updated.name ?? name });
+    await patchProfile(session.accessToken, name);
+    return NextResponse.json({ name });
   } catch (err) {
     console.error("[api/profile] update failed", err);
     return NextResponse.json({ error: "update_failed" }, { status: 502 });
