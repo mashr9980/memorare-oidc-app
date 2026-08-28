@@ -5,8 +5,9 @@ const CLIENT_ID = process.env.MOCK_CLIENT_ID || "local-dev-client-id";
 const CLIENT_SECRET = process.env.MOCK_CLIENT_SECRET || "local-dev-client-secret-PLACEHOLDER";
 const PORT = 9000;
 
-const codes = new Map();  // code  -> { challenge, user, nonce, used }
-const tokens = new Map(); // token -> mutable profile
+const codes = new Map();  // code  -> { challenge, sub, nonce, used }
+const tokens = new Map(); // token -> sub
+const users = new Map(); // sub   -> profile, persisted across sessions like the real provider
 
 const b64url = (buf) => buf.toString("base64url");
 const sha256 = (s) => b64url(createHash("sha256").update(s, "ascii").digest());
@@ -28,7 +29,20 @@ function deny(res, status, error, detail) {
 
 function bearer(req) {
   const m = /^Bearer (.+)$/.exec(req.headers.authorization || "");
-  return m ? tokens.get(m[1]) : undefined;
+  const sub = m ? tokens.get(m[1]) : undefined;
+  return sub ? users.get(sub) : undefined;
+}
+
+/** Profiles outlive sessions on the real provider, so keep them keyed by sub. */
+function upsert(seed) {
+  const existing = users.get(seed.sub);
+  if (existing) {
+    if (seed.email) existing.email = seed.email;
+    return existing;
+  }
+  const created = { ...seed, updated_at: "2026-08-28 00:00:00" };
+  users.set(seed.sub, created);
+  return created;
 }
 
 const server = http.createServer((req, res) => {
@@ -50,10 +64,11 @@ const server = http.createServer((req, res) => {
         ? { sub: "g-100", email: "googleuser@gmail.com", name: null, picture: "https://example.com/avatar.png" }
         : { sub: "e-100", email: q.get("login_hint") || "unknown@example.com", name: null, picture: null };
 
+    const profile = upsert(user);
     const code = b64url(randomBytes(16));
     codes.set(code, {
       challenge: q.get("code_challenge"),
-      user,
+      sub: profile.sub,
       nonce: q.get("nonce"),
       used: false,
     });
@@ -86,14 +101,14 @@ const server = http.createServer((req, res) => {
       const idTokenPayload = {
         iss: "https://auth.memorare.ai",
         aud: p.get("client_id"),
-        sub: rec.user.sub,
+        sub: rec.sub,
         exp: now + 3600,
         iat: now,
       };
       if (rec.nonce) idTokenPayload.nonce = rec.nonce;
       const idToken = signHS256(idTokenPayload, CLIENT_SECRET);
 
-      tokens.set(token, { ...rec.user, updated_at: "2026-08-28 00:00:00" });
+      tokens.set(token, rec.sub);
       console.log("[mock-idp] token exchange ok (PKCE verified)");
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ access_token: token, token_type: "Bearer", expires_in: 3600, id_token: idToken, scope: "openid profile email" }));
