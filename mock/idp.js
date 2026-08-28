@@ -99,7 +99,30 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  if (req.method === "GET" && u.pathname === "/api/userinfo") {
+  
+  if (req.method === "GET" && u.pathname === "/api/.well-known/openid-configuration") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({
+      issuer: "https://auth.memorare.ai",
+      authorization_endpoint: "https://auth.memorare.ai/api/authorize",
+      token_endpoint: "https://auth.memorare.ai/api/token",
+      userinfo_endpoint: "https://auth.memorare.ai/api/userinfo",
+      profile_endpoint: "https://auth.memorare.ai/api/profile",
+      response_types_supported: ["code"],
+      grant_types_supported: ["authorization_code"],
+      code_challenge_methods_supported: ["S256"],
+      scopes_supported: ["openid", "profile", "email"],
+      token_endpoint_auth_methods_supported: ["client_secret_post"],
+      subject_types_supported: ["public"],
+      id_token_signing_alg_values_supported: ["HS256"],
+      claims_supported: ["sub", "email", "name", "picture", "updated_at"],
+      login_hint_supported: true,
+      idp_parameter_supported: true,
+      idp_values_supported: ["google"],
+    }));
+  }
+
+if (req.method === "GET" && u.pathname === "/api/userinfo") {
     const user = bearer(req);
     if (!user) return deny(res, 401, "invalid_token");
     res.writeHead(200, { "Content-Type": "application/json" });

@@ -65,7 +65,8 @@ export async function GET(req: NextRequest) {
     );
 
     const res = NextResponse.redirect(`${publicOrigin(req)}/profile`);
-    res.cookies.set(COOKIE.session, sealed, {
+    const cookieName = process.env.NODE_ENV === "production" ? "__Host-mem_session" : COOKIE.session;
+    res.cookies.set(cookieName, sealed, {
       httpOnly: true,
       secure: isSecureRequest(req),
       sameSite: "lax",
