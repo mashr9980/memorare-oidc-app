@@ -29,8 +29,6 @@ export async function GET(req: NextRequest) {
   const verifier = req.cookies.get(COOKIE.verifier)?.value;
 
   if (!code || !state || !cookieState || !verifier) return fail(req, "missing_params");
-
-  // CSRF: the returned state must match the one we issued.
   if (!safeEqual(state, cookieState)) {
     console.error("[auth/callback] state mismatch");
     return fail(req, "state_mismatch");
@@ -38,7 +36,6 @@ export async function GET(req: NextRequest) {
 
   try {
     const tokens = await exchangeCode(code, verifier);
-    // Identity comes from userinfo, never from the login_hint we sent.
     const user = await fetchUserinfo(tokens.access_token);
 
     const sealed = await sealSession(

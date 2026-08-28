@@ -37,7 +37,6 @@ export async function exchangeCode(code: string, codeVerifier: string): Promise<
   });
 
   if (!res.ok) {
-    // Log upstream detail server-side only; never surface it to the browser.
     console.error("[memorare] token exchange failed", res.status, await res.text());
     throw new Error("token_exchange_failed");
   }

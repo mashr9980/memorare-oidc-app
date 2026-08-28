@@ -8,8 +8,6 @@ export const dynamic = "force-dynamic";
 export default async function ProfilePage() {
   const session = await getSession();
   if (!session) redirect("/");
-
-  // Prefer the profile API; fall back to the userinfo captured at login.
   const profile = await getProfile(session.accessToken).catch(() => null);
 
   const email = profile?.email ?? session.email;

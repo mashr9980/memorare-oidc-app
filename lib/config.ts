@@ -1,5 +1,3 @@
-// Server-only configuration. Nothing here is ever prefixed NEXT_PUBLIC_,
-// so none of it can reach the browser bundle.
 import "server-only";
 
 function required(name: string, value: string | undefined): string {

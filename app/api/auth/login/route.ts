@@ -5,13 +5,6 @@ import { COOKIE, isSecureRequest } from "@/lib/cookies";
 import { publicOrigin } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Starts the OIDC authorization-code + PKCE flow.
- *   ?email=<address> -> email/OTP path via login_hint
- *   ?idp=google      -> Google path (login_hint must be omitted)
- * The code_verifier is stored in an httpOnly cookie and never reaches the page.
- */
 export async function GET(req: NextRequest) {
   let cfg;
   try {
@@ -30,9 +23,6 @@ export async function GET(req: NextRequest) {
 
   const verifier = createVerifier();
   const state = createState();
-
-  // Concatenate rather than new URL(path, base): a leading-slash path would
-  // discard any path prefix on AUTH_BASE.
   const authorize = new URL(`${cfg.authBase.replace(/\/$/, "")}/api/authorize`);
   authorize.searchParams.set("response_type", "code");
   authorize.searchParams.set("client_id", cfg.clientId);
@@ -41,8 +31,6 @@ export async function GET(req: NextRequest) {
   authorize.searchParams.set("state", state);
   authorize.searchParams.set("code_challenge", challengeFor(verifier));
   authorize.searchParams.set("code_challenge_method", "S256");
-
-  // idp=google and login_hint are mutually exclusive.
   if (useGoogle) authorize.searchParams.set("idp", "google");
   else authorize.searchParams.set("login_hint", email!);
 

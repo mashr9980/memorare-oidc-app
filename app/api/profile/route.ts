@@ -3,11 +3,6 @@ import { getSession } from "@/lib/session";
 import { patchProfile } from "@/lib/memorare";
 
 export const dynamic = "force-dynamic";
-
-/**
- * Proxies the name update. The browser never holds the access token, and the
- * response is narrowed to safe fields so nothing sensitive can leak through.
- */
 export async function PATCH(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "unauthorized" }, { status: 401 });

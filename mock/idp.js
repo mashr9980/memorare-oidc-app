@@ -1,14 +1,3 @@
-/**
- * Local mock of the Memorare IdP for offline end-to-end testing.
- * Implements /api/authorize, /api/token, /api/userinfo, /api/profile, /logout
- * per https://auth.memorare.ai/public/docs/auth.html.
- *
- * Deliberately STRICT: it rejects missing/incorrect OAuth parameters so that
- * mistakes in the app surface here instead of on the real server.
- *
- * Usage:  node mock/idp.js   (listens on 127.0.0.1:9000)
- * Then set AUTH_BASE=http://127.0.0.1:9000 in .env.local.
- */
 const http = require("http");
 const { createHash, randomBytes } = require("crypto");
 
@@ -38,7 +27,6 @@ const server = http.createServer((req, res) => {
   const q = u.searchParams;
 
   if (req.method === "GET" && u.pathname === "/api/authorize") {
-    // Strict parameter validation, mirroring the documented contract.
     if (q.get("response_type") !== "code") return deny(res, 400, "invalid_request", "response_type");
     if (q.get("client_id") !== CLIENT_ID) return deny(res, 401, "invalid_client", "client_id");
     if (!q.get("redirect_uri")) return deny(res, 400, "invalid_request", "redirect_uri");

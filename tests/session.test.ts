@@ -29,7 +29,6 @@ describe("session sealing (JWE)", () => {
     const sealed = await sealSession(sample, 3600);
     expect(sealed).not.toContain(sample.accessToken);
     expect(sealed).not.toContain(sample.email);
-    // Not a plain JWS either: payload segment must not be plaintext JSON.
     const parts = sealed.split(".");
     expect(parts.length).toBe(5); // JWE compact = 5 segments
   });
