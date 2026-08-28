@@ -5,6 +5,12 @@ OIDC with PKCE, plus an editable user profile.
 
 **Demo:** https://test.vault-mind.com
 
+## Screenshots
+
+| Login | Profile (after sign-in) |
+|---|---|
+| ![Login](docs/live-login.png) | ![Profile](docs/live-profile.png) |
+
 ## How it works
 
 The entire OAuth exchange happens server-side in Route Handlers. The browser
