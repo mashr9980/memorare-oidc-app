@@ -1,18 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE, HOST_SESSION } from "@/lib/cookies";
+import { COOKIE, clearSessionCookies, isSecureRequest } from "@/lib/cookies";
+import { publicOrigin } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const authBase = process.env.AUTH_BASE ?? "https://auth.memorare.ai";
-  const appUrl = process.env.APP_URL ?? req.nextUrl.origin;
+  const secure = isSecureRequest(req);
 
   const target = new URL(`${authBase.replace(/\/$/, "")}/logout`);
-  target.searchParams.set("return_to", `${appUrl.replace(/\/$/, "")}/`);
+  target.searchParams.set("return_to", `${publicOrigin(req)}/`);
 
-  const res = NextResponse.redirect(target.toString());
-  res.cookies.delete(COOKIE.session);
-  res.cookies.delete(HOST_SESSION);
-  res.cookies.delete(COOKIE.ssoTried);
+  const res = NextResponse.redirect(target.toString(), { status: 303 });
+  clearSessionCookies(res, secure);
+
+  // Signing out is an explicit "not right now", so leave the silent-SSO probe
+  // marked as spent. Clearing it here sent the visitor straight back through
+  // prompt=none, which the provider answers from its own live session and
+  // lands them on /profile again.
+  res.cookies.set(COOKIE.ssoTried, "1", {
+    httpOnly: true,
+    secure,
+    sameSite: "lax",
+    path: "/",
+  });
   return res;
 }
