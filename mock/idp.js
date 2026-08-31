@@ -99,10 +99,14 @@ const server = http.createServer((req, res) => {
       return res.end();
     }
 
+    // A real provider gives every account its own subject. Deriving it from the
+    // address keeps it stable across sign-ins without needing a database, and
+    // stops two people sharing one profile.
+    const email = (q.get("login_hint") || "unknown@example.com").trim().toLowerCase();
     const user =
       q.get("idp") === "google"
-        ? { sub: "g-100", email: "googleuser@gmail.com", name: null, picture: "https://example.com/avatar.png" }
-        : { sub: "e-100", email: q.get("login_hint") || "unknown@example.com", name: null, picture: null };
+        ? { sub: "g-100", email: "googleuser@gmail.com", name: null, picture: null }
+        : { sub: `e-${sha256(email).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`, email, name: null, picture: null };
 
     const profile = upsert(user);
     const code = b64url(randomBytes(16));

@@ -122,6 +122,52 @@ test.describe("profile", () => {
   });
 });
 
+test.describe("account isolation", () => {
+  test("two people never share a profile", async ({ browser }) => {
+    const first = await browser.newContext();
+    const a = await first.newPage();
+    await a.goto("/");
+    await a.getByPlaceholder("Enter your email").fill("alice@example.com");
+    await a.getByRole("button", { name: "Continue with email" }).click();
+    await a.getByLabel("Name").fill("Alice Only");
+    await a.getByRole("button", { name: "Save" }).click();
+    await expect(a.getByRole("status")).toHaveText("Saved");
+    await first.close();
+
+    const second = await browser.newContext();
+    const b = await second.newPage();
+    await b.goto("/");
+    await b.getByPlaceholder("Enter your email").fill("bob@example.com");
+    await b.getByRole("button", { name: "Continue with email" }).click();
+    await expect(b).toHaveURL(/\/profile$/);
+
+    await expect(b.getByLabel("Email")).toHaveValue("bob@example.com");
+    await expect(b.getByLabel("Name")).toHaveValue("");
+    await expect(b.getByAltText("Your profile photo")).toHaveCount(0);
+    await second.close();
+  });
+
+  test("a returning address keeps its own profile", async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const p = await ctx.newPage();
+    await p.goto("/");
+    await p.getByPlaceholder("Enter your email").fill("carol@example.com");
+    await p.getByRole("button", { name: "Continue with email" }).click();
+    await p.getByLabel("Name").fill("Carol Returns");
+    await p.getByRole("button", { name: "Save" }).click();
+    await expect(p.getByRole("status")).toHaveText("Saved");
+    await ctx.close();
+
+    const again = await browser.newContext();
+    const q = await again.newPage();
+    await q.goto("/");
+    await q.getByPlaceholder("Enter your email").fill("carol@example.com");
+    await q.getByRole("button", { name: "Continue with email" }).click();
+    await expect(q.getByLabel("Name")).toHaveValue("Carol Returns");
+    await again.close();
+  });
+});
+
 test.describe("silent single sign-on", () => {
   test("a visitor with a provider session is signed in without clicking", async ({ browser }) => {
     const context = await browser.newContext();

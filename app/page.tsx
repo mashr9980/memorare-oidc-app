@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { COOKIE } from "@/lib/cookies";
+import { demoMode } from "@/lib/demo";
 
 export const dynamic = "force-dynamic";
 
@@ -47,6 +48,15 @@ export default async function LoginPage({
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#f4f7fb] px-4 py-10">
       <div className="w-full max-w-[543px] rounded-2xl border border-[#dce7f9] bg-[#eef3fc] px-7 py-8 shadow-sm">
+        {demoMode() && (
+          <div className="mb-5 rounded-lg border border-[#c9dcfa] bg-[#eaf1fd] px-4 py-3 text-[13px] leading-relaxed text-[#1c3f7c]">
+            <strong className="font-semibold">Demo mode.</strong> Memorare hasn&apos;t issued client
+            credentials yet, so sign in runs against a stand-in built from their API docs. Any email
+            works and no code is emailed. The OAuth flow, PKCE, token exchange and profile calls are
+            all real, and a new email starts with an empty profile.
+          </div>
+        )}
+
         {message && (
           <p
             role="alert"
