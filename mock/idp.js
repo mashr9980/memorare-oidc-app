@@ -5,8 +5,11 @@ const CLIENT_ID = process.env.MOCK_CLIENT_ID || process.env.MEMORARE_CLIENT_ID |
 const CLIENT_SECRET =
   process.env.MOCK_CLIENT_SECRET || process.env.MEMORARE_CLIENT_SECRET || "local-dev-client-secret-PLACEHOLDER";
 const PORT = Number(process.env.MOCK_PORT || 9000);
-// Behind the nginx demo prefix the SSO cookie must not be sent to the app itself.
+// Behind the nginx demo prefix the SSO cookie must not be sent to the app itself,
+// and any link this page hands back to the browser (like the chooser's form
+// action) must include the same prefix or the POST goes to the wrong service.
 const COOKIE_PATH = process.env.MOCK_COOKIE_PATH || "/";
+const BASE_PATH = COOKIE_PATH === "/" ? "" : COOKIE_PATH;
 
 const codes = new Map();  // code  -> { challenge, sub, nonce, used }
 const tokens = new Map(); // token -> sub
@@ -82,7 +85,7 @@ function googleChooserPage(query, error) {
 <h2 style="font-weight:400;margin:0 0 4px">Choose an account</h2>
 <p style="color:#5f6368;margin:0 0 20px;font-size:14px">to continue to Memorare (demo)</p>
 ${err}
-<form method="POST" action="/api/google-consent">
+<form method="POST" action="${BASE_PATH}/api/google-consent">
 <input type="hidden" name="authorize" value="${authorize}">
 <input name="email" type="email" placeholder="you@gmail.com" required autofocus
   style="width:100%;padding:10px;font-size:14px;border:1px solid #dadce0;border-radius:4px;box-sizing:border-box">
