@@ -117,7 +117,7 @@ cp .env.example .env.local     # placeholders work against the mock provider
 npm run dev
 ```
 
-Open http://localhost:3000. With no real credentials the app talks to `mock/idp.js`, a standalone provider that implements the documented contract and enforces it strictly: S256 verification, one-time codes, client authentication, `{error, error_description}` bodies, and `idp=google` rejected alongside `login_hint`.
+Open http://localhost:3000. With no real credentials the app talks to `mock/idp.js`, a standalone provider that implements the documented contract and enforces it strictly: S256 verification, one-time codes, client authentication, `{error, error_description}` bodies, and `idp=google` rejected alongside `login_hint`. The Google path shows a minimal account chooser, the way Google itself does, so two different testers using the Google button never collide on one identity the way two different email addresses would if the mock skipped that step.
 
 ```bash
 node mock/idp.js    # 127.0.0.1:9000, started separately

@@ -33,8 +33,13 @@ test.describe("sign in", () => {
   test("google sign in reaches the profile", async ({ page }) => {
     await page.goto("/");
     await page.getByRole("button", { name: "Continue with Google" }).click();
+    await expect(page.getByText("Choose an account")).toBeVisible();
+
+    await page.getByPlaceholder("you@gmail.com").fill("ada@gmail.com");
+    await page.getByRole("button", { name: "Next" }).click();
+
     await expect(page).toHaveURL(/\/profile$/);
-    await expect(page.getByLabel("Email")).toHaveValue("googleuser@gmail.com");
+    await expect(page.getByLabel("Email")).toHaveValue("ada@gmail.com");
   });
 
   test("the session cookie is httpOnly and unreadable from scripts", async ({ page, context }) => {
@@ -123,6 +128,32 @@ test.describe("profile", () => {
 });
 
 test.describe("account isolation", () => {
+  test("two Google sign-ins for different accounts never collide", async ({ browser }) => {
+    const first = await browser.newContext();
+    const a = await first.newPage();
+    await a.goto("/");
+    await a.getByRole("button", { name: "Continue with Google" }).click();
+    await a.getByPlaceholder("you@gmail.com").fill("first@gmail.com");
+    await a.getByRole("button", { name: "Next" }).click();
+    await expect(a).toHaveURL(/\/profile$/);
+    await a.getByLabel("Name").fill("First Person");
+    await a.getByRole("button", { name: "Save" }).click();
+    await expect(a.getByRole("status")).toHaveText("Saved");
+    await first.close();
+
+    const second = await browser.newContext();
+    const b = await second.newPage();
+    await b.goto("/");
+    await b.getByRole("button", { name: "Continue with Google" }).click();
+    await b.getByPlaceholder("you@gmail.com").fill("second@gmail.com");
+    await b.getByRole("button", { name: "Next" }).click();
+    await expect(b).toHaveURL(/\/profile$/);
+    await expect(b.getByLabel("Email")).toHaveValue("second@gmail.com");
+    await expect(b.getByLabel("Name")).toHaveValue("");
+    await second.close();
+  });
+
+
   test("two people never share a profile", async ({ browser }) => {
     const first = await browser.newContext();
     const a = await first.newPage();

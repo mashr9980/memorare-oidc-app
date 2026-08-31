@@ -54,6 +54,43 @@ function upsert(seed) {
   return created;
 }
 
+function issueCode(res, back, q, user, kind) {
+  const profile = upsert(user);
+  const code = b64url(randomBytes(16));
+  codes.set(code, { challenge: q.get("code_challenge"), sub: profile.sub, nonce: q.get("nonce"), used: false });
+  back.searchParams.set("code", code);
+  back.searchParams.set("state", q.get("state"));
+  console.log(`[mock-idp] authorize ok (${kind}) -> code issued for ${profile.sub}`);
+  res.writeHead(302, {
+    Location: back.toString(),
+    "Set-Cookie": `mock_sso=${profile.sub}; Path=${COOKIE_PATH}; HttpOnly; SameSite=Lax`,
+  });
+  res.end();
+}
+
+/**
+ * Stands in for Google's real account chooser. The provider docs forbid
+ * sending login_hint alongside idp=google on /api/authorize, so this asks the
+ * question the way Google itself would: after redirecting to the identity
+ * provider, not as a parameter on the request.
+ */
+function googleChooserPage(query, error) {
+  const authorize = Buffer.from(query.replace(/^\?/, ""), "utf8").toString("base64url");
+  const err = error ? `<p style="color:#b3261e;margin:0 0 12px;font-size:14px">${error}</p>` : "";
+  return `<!doctype html><html><head><meta charset="utf-8"><title>Sign in - Google</title></head>
+<body style="font-family:Arial,sans-serif;max-width:420px;margin:64px auto;padding:32px;border:1px solid #dadce0;border-radius:8px">
+<h2 style="font-weight:400;margin:0 0 4px">Choose an account</h2>
+<p style="color:#5f6368;margin:0 0 20px;font-size:14px">to continue to Memorare (demo)</p>
+${err}
+<form method="POST" action="/api/google-consent">
+<input type="hidden" name="authorize" value="${authorize}">
+<input name="email" type="email" placeholder="you@gmail.com" required autofocus
+  style="width:100%;padding:10px;font-size:14px;border:1px solid #dadce0;border-radius:4px;box-sizing:border-box">
+<button type="submit" style="margin-top:16px;padding:9px 24px;background:#1a73e8;color:#fff;border:none;border-radius:4px;font-size:14px;cursor:pointer">Next</button>
+</form>
+</body></html>`;
+}
+
 const server = http.createServer((req, res) => {
   const u = new URL(req.url, `http://127.0.0.1:${PORT}`);
   const q = u.searchParams;
@@ -99,32 +136,44 @@ const server = http.createServer((req, res) => {
       return res.end();
     }
 
+    // Real Google always shows an account chooser, so this mock does too: it is
+    // the only way to know WHICH Google account the tester means, and skipping
+    // it is exactly what caused every Google sign-in to collide on one identity.
+    if (q.get("idp") === "google") {
+      return res.writeHead(200, { "Content-Type": "text/html" }).end(googleChooserPage(u.search));
+    }
+
     // A real provider gives every account its own subject. Deriving it from the
     // address keeps it stable across sign-ins without needing a database, and
     // stops two people sharing one profile.
     const email = (q.get("login_hint") || "unknown@example.com").trim().toLowerCase();
-    const user =
-      q.get("idp") === "google"
-        ? { sub: "g-100", email: "googleuser@gmail.com", name: null, picture: null }
-        : { sub: `e-${sha256(email).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`, email, name: null, picture: null };
+    const user = { sub: `e-${sha256(email).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`, email, name: null, picture: null };
+    issueCode(res, back, q, user, "email");
+    return;
+  }
 
-    const profile = upsert(user);
-    const code = b64url(randomBytes(16));
-    codes.set(code, {
-      challenge: q.get("code_challenge"),
-      sub: profile.sub,
-      nonce: q.get("nonce"),
-      used: false,
-    });
+  if (req.method === "POST" && u.pathname === "/api/google-consent") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const p = new URLSearchParams(body);
+      const original = new URLSearchParams(Buffer.from(p.get("authorize") || "", "base64url").toString("utf8"));
+      const back = new URL(original.get("redirect_uri"));
 
-    back.searchParams.set("code", code);
-    back.searchParams.set("state", q.get("state"));
-    console.log(`[mock-idp] authorize ok (${q.get("idp") === "google" ? "google" : "email"}) -> code issued`);
-    res.writeHead(302, {
-      Location: back.toString(),
-      "Set-Cookie": `mock_sso=${profile.sub}; Path=${COOKIE_PATH}; HttpOnly; SameSite=Lax`,
+      const email = (p.get("email") || "").trim().toLowerCase();
+      if (!email || !email.includes("@")) {
+        return res
+          .writeHead(200, { "Content-Type": "text/html" })
+          .end(googleChooserPage(`?${original.toString()}`, "Enter a valid email to continue."));
+      }
+
+      // Prefixed distinctly from the email-OTP path: signing in with the same
+      // address via Google and via email are different accounts in reality,
+      // unless the two are explicitly linked, which this mock does not model.
+      const user = { sub: `g-${sha256(email).replace(/[^a-zA-Z0-9]/g, "").slice(0, 16)}`, email, name: null, picture: null };
+      issueCode(res, back, original, user, "google");
     });
-    return res.end();
+    return;
   }
 
   if (req.method === "POST" && u.pathname === "/api/token") {
